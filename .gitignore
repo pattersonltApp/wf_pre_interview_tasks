@@ -1,0 +1,7 @@
+/split_data/test.pkl
+/split_data/train.pkl
+/split_data/val.pkl
+ecg_data.pkl
+/models/
+/wandb/
+/training2017/
