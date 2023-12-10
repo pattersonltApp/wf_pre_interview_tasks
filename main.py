@@ -15,7 +15,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.python.client import device_lib
 import wandb
-from wandb.keras import WandbCallback
+from wandb.keras import WandbMetricsLogger
 from sklearn.metrics import f1_score, confusion_matrix
 import seaborn as sns
 import io
@@ -26,16 +26,25 @@ wandb.login()
 
 # Initialize WandB with the project configuration
 wandb.init(project='pre_interview_tasks', entity='pattersonlt', config={
-    "learning_rate": 0.001,
-    "epochs": 10,
-    "batch_size": 32
+    "learning_rate": 0.003,
+    "epochs": 100,
+    "batch_size": 16,
+    "num_neurons": 500,
+    "activation": "sigmoid"
 })
 
 # Log the hardware used
-print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+gpus = tf.config.list_physical_devices('GPU')
+print("Num GPUs Available: ", len(gpus))
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+        print(e)
 
 
-# Define custom callback to log F1 scores and save the model with the best F1 score
+# Custom callback to log F1 scores and save the model with the best F1 score
 class PhysioNetF1Callback(keras.callbacks.Callback):
     def __init__(self, validation_data, class_names):
         super().__init__()
@@ -78,14 +87,24 @@ class PhysioNetF1Callback(keras.callbacks.Callback):
             # Get the current date and time
             timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-            # Save the model with the timestamp
-            filename = f'model_{timestamp}.h5'
+            # Format the average F1 score to include in the filename, replace dot with underscore
+            avg_F1_formatted = "{:.4f}".format(avg_F1_score).replace('.', '_')
+
+            # Save the model with the timestamp and F1 score
+            filename = f'model_{timestamp}_F1_{avg_F1_formatted}.h5'
             self.model.save(f'models/{filename}')
 
             # Generate and log the confusion matrix image
-            fig = self.plot_confusion_matrix(cm, filename=filename, class_names=self.class_names)
-            wandb.log({"confusion_matrix": [wandb.Image(fig, caption="Confusion Matrix")]})
-            plt.close(fig)
+            # fig = self.plot_confusion_matrix(cm, filename=filename, class_names=self.class_names)
+            # wandb.log({"confusion_matrix": [wandb.Image(fig, caption="Confusion Matrix")]})
+            # plt.close(fig)
+
+        val_pred_raw = None
+        val_pred = None
+        val_true = None
+        cm = None
+        F1_scores = None
+        avg_F1_score = None
 
     @staticmethod
     def plot_confusion_matrix(cm, filename, class_names):
@@ -265,6 +284,7 @@ def load_and_train_model(X_train, y_train, X_val, y_val, class_names):
     :param class_names: The class names.
     :return model: The trained model.
     """
+    tf.keras.backend.clear_session()
     # Load the InceptionResNetV2 model
     base_model = keras.applications.inception_resnet_v2.InceptionResNetV2(
         weights='imagenet', include_top=False, input_shape=(299, 299, 3))
@@ -272,13 +292,13 @@ def load_and_train_model(X_train, y_train, X_val, y_val, class_names):
 
     # Add custom layers
     x = keras.layers.GlobalAveragePooling2D()(base_model.output)
-    x = keras.layers.Dense(1024, activation='relu')(x)
+    x = keras.layers.Dense(wandb.config.num_neurons, activation=wandb.config.activation)(x)
     output = keras.layers.Dense(len(class_names), activation='softmax')(x)
 
     model = keras.Model(inputs=base_model.input, outputs=output)
 
     # Compile the model
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=wandb.config.learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
 
     # Create an instance of the custom F1 callback
     f1_callback = PhysioNetF1Callback(validation_data=(X_val, y_val), class_names=class_names)
@@ -289,7 +309,7 @@ def load_and_train_model(X_train, y_train, X_val, y_val, class_names):
         validation_data=(X_val, y_val),
         epochs=wandb.config.epochs,
         batch_size=wandb.config.batch_size,
-        callbacks=[f1_callback, WandbCallback()]
+        callbacks=[f1_callback, WandbMetricsLogger()]
     )
 
     return model
@@ -311,13 +331,12 @@ if __name__ == '__main__':
         plot_class_distribution(df)
 
     # If split data does not exist, create it, otherwise load it
-    if not os.path.exists('split_data/test.pkl'):
+    if not os.path.exists('split_data/train.pkl'):
         train, test, val = prepare_and_pickle_data(df)
+        del test  # Don't need test set
     else:
         with open('split_data/train.pkl', 'rb') as f:
             train = pickle.load(f)
-        with open('split_data/test.pkl', 'rb') as f:
-            test = pickle.load(f)
         with open('split_data/val.pkl', 'rb') as f:
             val = pickle.load(f)
 
