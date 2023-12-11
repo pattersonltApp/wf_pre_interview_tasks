@@ -13,13 +13,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.python.client import device_lib
 import wandb
 from wandb.keras import WandbMetricsLogger
-from sklearn.metrics import f1_score, confusion_matrix
-import seaborn as sns
-import io
-import datetime
+from f1_training_callback import PhysioNetF1Callback
+from preprocessing import resize_and_normalize
 
 # Login to wandb
 wandb.login()
@@ -33,7 +30,7 @@ wandb.init(project='pre_interview_tasks', entity='pattersonlt', config={
     "activation": "sigmoid"
 })
 
-# Log the hardware used
+# Log the hardware used and set memory growth for GPU, this should help with memory issues
 gpus = tf.config.list_physical_devices('GPU')
 print("Num GPUs Available: ", len(gpus))
 if gpus:
@@ -42,85 +39,6 @@ if gpus:
             tf.config.experimental.set_memory_growth(gpu, True)
     except RuntimeError as e:
         print(e)
-
-
-# Custom callback to log F1 scores and save the model with the best F1 score
-class PhysioNetF1Callback(keras.callbacks.Callback):
-    def __init__(self, validation_data, class_names):
-        super().__init__()
-        self.validation_data = validation_data
-        self.best_f1_score = -1  # Initialize with negative value to ensure the first epoch's score is saved
-        self.class_names = class_names
-
-    def on_epoch_end(self, epoch, logs=None):
-        """
-        Calculate the F1 score for each class and the average F1 score (the final challenge score).
-        :param epoch: The current epoch.
-        :param logs: The logs.
-        :return: None, but saves the model and a confusion matrix if the F1 score has improved.
-        """
-        # Predict the validation data
-        val_pred_raw = self.model.predict(self.validation_data[0])
-        val_pred = np.argmax(val_pred_raw, axis=1)
-        val_true = np.argmax(self.validation_data[1], axis=1)
-
-        # Calculate confusion matrix
-        cm = confusion_matrix(val_true, val_pred)
-
-        # Calculate F1 scores for each class using PhysioNet's method
-        F1_scores = {}
-        for i in range(len(cm)):
-            F1 = 2 * cm[i, i] / (np.sum(cm[i, :]) + np.sum(cm[:, i]) if np.sum(cm[i, :]) + np.sum(cm[:, i]) > 0 else 1)
-            F1_scores[f'F1_{i}'] = F1
-
-        # Calculate the average F1 score (the final challenge score)
-        avg_F1_score = np.mean(list(F1_scores.values()))
-        F1_scores['avg_F1_score'] = avg_F1_score
-
-        # Log F1 scores
-        wandb.log(F1_scores)
-
-        # Save the model if the F1 score has improved
-        if avg_F1_score > self.best_f1_score:
-            self.best_f1_score = avg_F1_score
-
-            # Get the current date and time
-            timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-
-            # Format the average F1 score to include in the filename, replace dot with underscore
-            avg_F1_formatted = "{:.4f}".format(avg_F1_score).replace('.', '_')
-
-            # Save the model with the timestamp and F1 score
-            filename = f'model_{timestamp}_F1_{avg_F1_formatted}.h5'
-            self.model.save(f'models/{filename}')
-
-            # Generate and log the confusion matrix image
-            # fig = self.plot_confusion_matrix(cm, filename=filename, class_names=self.class_names)
-            # wandb.log({"confusion_matrix": [wandb.Image(fig, caption="Confusion Matrix")]})
-            # plt.close(fig)
-
-        val_pred_raw = None
-        val_pred = None
-        val_true = None
-        cm = None
-        F1_scores = None
-        avg_F1_score = None
-
-    @staticmethod
-    def plot_confusion_matrix(cm, filename, class_names):
-        """
-        Returns a figure containing the plotted confusion matrix.
-        :param cm: The confusion matrix.
-        :param class_names: The class names.
-        :return: The figure.
-        """
-        figure = plt.figure(figsize=(8, 8))
-        ax = sns.heatmap(cm, annot=True, fmt="d", cmap='Blues', xticklabels=class_names, yticklabels=class_names)
-        ax.xaxis.tick_top()
-        plt.title(filename)
-        plt.ylabel('Reference Classification')
-        plt.xlabel('Predicted Classification')
-        return figure
 
 
 def create_df():
@@ -261,26 +179,13 @@ def prepare_and_pickle_data(df):
     return combined_datasets['train'], combined_datasets['test'], combined_datasets['val']
 
 
-def resize_and_normalize(X, target_size=(299, 299)):
-    """
-    Resize the spectrograms to the target size and normalize them for InceptionResNetV2.
-    :param X: The spectrograms.
-    :param target_size: The target size.
-    :return X_normalized: The normalized spectrograms.
-    """
-    X_resized = [tf.image.resize(tf.expand_dims(img, axis=-1), target_size) for img in X]  # Add channel dimension
-    X_three_channel = [tf.repeat(img, 3, axis=-1) for img in X_resized]  # Convert to 3-channel
-    X_normalized = np.array([keras.applications.inception_resnet_v2.preprocess_input(x) for x in X_three_channel])
-    return X_normalized
-
-
-def load_and_train_model(X_train, y_train, X_val, y_val, class_names):
+def load_and_train_model(X_train, y_train_categorical, X_val, y_val_categorical, class_names):
     """
     Load the InceptionResNetV2 model, adapt it to the ECG task, and train.
     :param X_train: The training data.
-    :param y_train: The training labels.
+    :param y_train_categorical: The training labels.
     :param X_val: The validation data.
-    :param y_val: The validation labels.
+    :param y_val_categorical: The validation labels.
     :param class_names: The class names.
     :return model: The trained model.
     """
@@ -301,12 +206,12 @@ def load_and_train_model(X_train, y_train, X_val, y_val, class_names):
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=wandb.config.learning_rate), loss='categorical_crossentropy', metrics=['accuracy'])
 
     # Create an instance of the custom F1 callback
-    f1_callback = PhysioNetF1Callback(validation_data=(X_val, y_val), class_names=class_names)
+    f1_callback = PhysioNetF1Callback(validation_data=(X_val, y_val_categorical), class_names=class_names)
 
     # Train the model with both the WandbCallback and your custom F1 callback
     model.fit(
-        X_train, y_train,
-        validation_data=(X_val, y_val),
+        X_train, y_train_categorical,
+        validation_data=(X_val, y_val_categorical),
         epochs=wandb.config.epochs,
         batch_size=wandb.config.batch_size,
         callbacks=[f1_callback, WandbMetricsLogger()]

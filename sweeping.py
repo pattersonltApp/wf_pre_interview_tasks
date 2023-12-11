@@ -3,17 +3,18 @@
 # Description: This file contains code for a WandB sweep for the pre-interview task.
 
 import pickle
-import numpy as np
 from sklearn.preprocessing import LabelEncoder
 import tensorflow as tf
 from tensorflow import keras
 import wandb
 from wandb.keras import WandbMetricsLogger
-from sklearn.metrics import confusion_matrix
+from f1_sweeping_callback import PhysioNetF1SweepCallback
+from preprocessing import resize_and_normalize
 
 # Login to wandb
 wandb.login()
 
+# Sweep config to be used by WandB
 sweep_config = {
     'method': 'bayes',
     'metric': {
@@ -40,65 +41,15 @@ sweep_config = {
     }
 }
 
-
 # Log the hardware used
-# gpus = tf.config.list_physical_devices('GPU')
-# print("Num GPUs Available: ", len(gpus))
-# if gpus:
-#     try:
-#         for gpu in gpus:
-#             tf.config.experimental.set_memory_growth(gpu, True)
-#     except RuntimeError as e:
-#         print(e)
-
-# Define custom callback to log F1 scores
-class PhysioNetF1Callback(keras.callbacks.Callback):
-    def __init__(self, validation_data, class_names):
-        super().__init__()
-        self.validation_data = validation_data
-        self.best_f1_score = -1
-        self.class_names = class_names
-
-    def on_epoch_end(self, epoch, logs=None):
-        """
-        Calculate the F1 score for each class and the average F1 score (the final challenge score).
-        :param epoch: The current epoch.
-        :param logs: The logs.
-        :return: None
-        """
-        # Predict the validation data
-        val_pred_raw = self.model.predict(self.validation_data[0])
-        val_pred = np.argmax(val_pred_raw, axis=1)
-        val_true = np.argmax(self.validation_data[1], axis=1)
-
-        # Calculate confusion matrix
-        cm = confusion_matrix(val_true, val_pred)
-
-        # Calculate F1 scores for each class using PhysioNet's method
-        F1_scores = {}
-        for i in range(len(cm)):
-            F1 = 2 * cm[i, i] / (np.sum(cm[i, :]) + np.sum(cm[:, i]) if np.sum(cm[i, :]) + np.sum(cm[:, i]) > 0 else 1)
-            F1_scores[f'F1_{i}'] = F1
-
-        # Calculate the average F1 score (the final challenge score)
-        avg_F1_score = np.mean(list(F1_scores.values()))
-        F1_scores['avg_F1_score'] = avg_F1_score
-
-        # Log F1 scores
-        wandb.log(F1_scores)
-
-
-def resize_and_normalize(X, target_size=(299, 299)):
-    """
-    Resize the spectrograms to the target size and normalize them for InceptionResNetV2.
-    :param X: The spectrograms.
-    :param target_size: The target size.
-    :return X_normalized: The normalized spectrograms.
-    """
-    X_resized = [tf.image.resize(tf.expand_dims(img, axis=-1), target_size) for img in X]  # Add channel dimension
-    X_three_channel = [tf.repeat(img, 3, axis=-1) for img in X_resized]  # Convert to 3-channel
-    X_normalized = np.array([keras.applications.inception_resnet_v2.preprocess_input(x) for x in X_three_channel])
-    return X_normalized
+gpus = tf.config.list_physical_devices('GPU')
+print("Num GPUs Available: ", len(gpus))
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+        print(e)
 
 
 def get_optimizer(name, learning_rate):
@@ -133,7 +84,7 @@ def training():
         model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
         # Create an instance of the custom F1 callback
-        f1_callback = PhysioNetF1Callback(validation_data=(X_val, y_val_categorical), class_names=class_names)
+        f1_callback = PhysioNetF1SweepCallback(validation_data=(X_val, y_val_categorical), class_names=class_names)
 
         num_epochs = 10
 
@@ -152,6 +103,7 @@ def training():
         )
 
 
+# Load data
 with open('split_data/train.pkl', 'rb') as f:
     train = pickle.load(f)
 with open('split_data/val.pkl', 'rb') as f:
@@ -177,7 +129,6 @@ class_names = le.classes_.tolist()
 y_train_categorical = keras.utils.to_categorical(y_train_encoded)
 y_val_categorical = keras.utils.to_categorical(y_val_encoded)
 
+# Initialize the sweep
 sweep_id = wandb.sweep(sweep_config, project='pre_interview_tasks', entity='pattersonlt')
 wandb.agent(sweep_id, training)
-
-

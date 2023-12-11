@@ -51,7 +51,29 @@
       <recent name="D:\wake_forest\pre_interview_tasks" />
     </key>
   </component>
-  <component name="RunManager">
+  <component name="RunManager" selected="Python.evaluation">
+    <configuration name="evaluation" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="pre_interview_tasks" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/evaluation.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="main" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="pre_interview_tasks" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -76,6 +98,7 @@
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.evaluation" />
         <item itemvalue="Python.main" />
       </list>
     </recent_temporary>
@@ -99,7 +122,7 @@
       <workItem from="1702190942362" duration="6228000" />
       <workItem from="1702198880403" duration="1248000" />
       <workItem from="1702223003847" duration="4843000" />
-      <workItem from="1702244568356" duration="4241000" />
+      <workItem from="1702244568356" duration="16868000" />
     </task>
     <servers />
   </component>
@@ -161,5 +184,6 @@
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/pre_interview_tasks$main.coverage" NAME="main Coverage Results" MODIFIED="1702183812497" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/pre_interview_tasks$evaluation.coverage" NAME="evaluation Coverage Results" MODIFIED="1702279430718" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>
