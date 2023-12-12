@@ -23,13 +23,24 @@ class PhysioNetF1SweepCallback(keras.callbacks.Callback):
         :param logs: The logs.
         :return: None
         """
-        # Predict the validation data
-        val_pred_raw = self.model.predict(self.validation_data[0])
-        val_pred = np.argmax(val_pred_raw, axis=1)
-        val_true = np.argmax(self.validation_data[1], axis=1)
+        # Initialize predictions and true values
+        val_preds = []
+        val_trues = []
+
+        # Predict in batches
+        for i in range(0, len(self.validation_data[0]), self.batch_size):
+            batch_x = self.validation_data[0][i:i + self.batch_size]
+            batch_y = self.validation_data[1][i:i + self.batch_size]
+            batch_preds = self.model.predict(batch_x)
+            val_preds.extend(np.argmax(batch_preds, axis=1))
+            val_trues.extend(np.argmax(batch_y, axis=1))
+
+        # Convert to numpy arrays
+        val_preds = np.array(val_preds)
+        val_trues = np.array(val_trues)
 
         # Calculate confusion matrix
-        cm = confusion_matrix(val_true, val_pred)
+        cm = confusion_matrix(val_trues, val_preds)
 
         # Calculate F1 scores for each class using PhysioNet's method
         F1_scores = {}

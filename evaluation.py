@@ -1,3 +1,7 @@
+# Author: Luke Patterson
+# Name: evaluation.py
+# Description: This file contains code for evaluating the model.
+
 import pickle
 import numpy as np
 import tensorflow as tf
@@ -10,6 +14,11 @@ from preprocessing import resize_and_normalize
 
 # Calculate custom F1 scores
 def calculate_custom_f1_scores(cm):
+    """
+    Calculate the F1 score for each class and the average F1 score (the final challenge score).
+    :param cm: The confusion matrix.
+    :return F1_scores, avg_F1_score: F1_scores, the F1 scores for each class. avg_F1_score, the average F1 score.
+    """
     F1_scores = {}
     for i in range(len(cm)):
         F1 = 2 * cm[i, i] / (np.sum(cm[i, :]) + np.sum(cm[:, i])) if np.sum(cm[i, :]) + np.sum(cm[:, i]) > 0 else 0
@@ -20,27 +29,63 @@ def calculate_custom_f1_scores(cm):
 
 # Plot and save ROC curve
 def plot_roc_curve(y_test_categorical, y_pred_raw, class_names):
+    """
+    Plot and save a ROC curve.
+    :param y_test_categorical: The true labels.
+    :param y_pred_raw: The predicted labels.
+    :param class_names: The class names.
+    :return: None, saves the ROC curve to a file.
+    """
     n_classes = y_test_categorical.shape[1]
     fpr, tpr, roc_auc = dict(), dict(), dict()
+
+    # Compute ROC curve and ROC area for each class
     for i in range(n_classes):
         fpr[i], tpr[i], _ = roc_curve(y_test_categorical[:, i], y_pred_raw[:, i])
         roc_auc[i] = auc(fpr[i], tpr[i])
-    fpr["micro"], tpr["micro"], _ = roc_curve(y_test_categorical.ravel(), y_pred_raw.ravel())
-    roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
 
+    # Aggregate all false positive rates
+    all_fpr = np.unique(np.concatenate([fpr[i] for i in range(n_classes)]))
+
+    # Interpolate all ROC curves at these points
+    mean_tpr = np.zeros_like(all_fpr)
+    for i in range(n_classes):
+        mean_tpr += np.interp(all_fpr, fpr[i], tpr[i])
+
+    # Average it and compute AUC
+    mean_tpr /= n_classes
+
+    fpr["macro"] = all_fpr
+    tpr["macro"] = mean_tpr
+    roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
+
+    # Plot all ROC curves
     plt.figure(figsize=(10, 10))
-    plt.plot(fpr["micro"], tpr["micro"], label=f'Micro-average ROC curve (area = {roc_auc["micro"]:0.2f})')
+
+    # Plot macro-average ROC curve
+    plt.plot(fpr["macro"], tpr["macro"],
+             label=f'Macro-average ROC curve (area = {roc_auc["macro"]:0.2f})',
+             color='navy', linestyle=':', linewidth=4)
+
+    # Plot ROC curve for each class
     for i in range(n_classes):
         plt.plot(fpr[i], tpr[i], label=f'ROC curve of class {class_names[i]} (area = {roc_auc[i]:0.2f})')
+
     plt.plot([0, 1], [0, 1], 'k--')
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
     plt.title('Multi-class ROC Curve')
     plt.legend(loc="lower right")
-    plt.savefig('data_exploration/multi_class_roc.png')
+    plt.savefig('model_evaluation/multi_class_roc.png')
 
 
 def plot_confusion_matrix(cm, class_names):
+    """
+    Plot and save a confusion matrix.
+    :param cm: The confusion matrix.
+    :param class_names: The class names.
+    :return: None, saves the confusion matrix to a file.
+    """
     # Calculate sums for rows and columns
     row_sums = cm.sum(axis=1)
     col_sums = cm.sum(axis=0)
@@ -66,7 +111,7 @@ def plot_confusion_matrix(cm, class_names):
     # Add total to the bottom right corner
     plt.text(len(cm) + 0.1, len(cm) + 0.1, str(total), ha='center', va='center')
 
-    plt.savefig('data_exploration/test_data_confusion_matrix.png')
+    plt.savefig('model_evaluation/test_data_confusion_matrix.png')
 
 
 # Create and save a table
@@ -84,7 +129,7 @@ def save_metrics_table(data, filename, title):
     ax.table(cellText=data, colLabels=["Metric", "Value"], loc="center", cellLoc='center')
     plt.title(title)
     plt.tight_layout()
-    plt.savefig(f'data_exploration/{filename}.png')
+    plt.savefig(f'model_evaluation/{filename}.png')
 
 
 if __name__ == '__main__':
@@ -109,17 +154,17 @@ if __name__ == '__main__':
     cm = confusion_matrix(y_test_encoded, y_pred)
     F1_scores, avg_F1_score = calculate_custom_f1_scores(cm)
     accuracy = accuracy_score(y_test_encoded, y_pred)
-    precision_micro = precision_score(y_test_encoded, y_pred, average='micro')
-    recall_micro = recall_score(y_test_encoded, y_pred, average='micro')
-    auc_micro = roc_auc_score(y_test_categorical, y_pred_raw, multi_class='ovo', average='micro')
+    precision_micro = precision_score(y_test_encoded, y_pred, average='macro')
+    recall_micro = recall_score(y_test_encoded, y_pred, average='macro')
+    auc_micro = roc_auc_score(y_test_categorical, y_pred_raw, multi_class='ovo', average='macro')
 
     # Save overall metrics table
     overall_metrics = [
         ["F1 Score", f"{avg_F1_score:.2f}"],
         ["Accuracy", f"{accuracy:.2f}"],
-        ["Precision (micro)", f"{precision_micro:.2f}"],
-        ["Recall (micro)", f"{recall_micro:.2f}"],
-        ["AUC (micro)", f"{auc_micro:.2f}"]
+        ["Precision (macro)", f"{precision_micro:.2f}"],
+        ["Recall (macro)", f"{recall_micro:.2f}"],
+        ["AUC (macro)", f"{auc_micro:.2f}"]
     ]
     save_metrics_table(overall_metrics, "overall_metrics", "Overall Metrics")
 

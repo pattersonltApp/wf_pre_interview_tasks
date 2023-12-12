@@ -53,6 +53,12 @@ if gpus:
 
 
 def get_optimizer(name, learning_rate):
+    """
+    Returns an optimizer based on the name and learning rate.
+    :param name: The name of the optimizer.
+    :param learning_rate: The learning rate to use.
+    :return: An optimizer.
+    """
     if name == 'adam':
         return tf.keras.optimizers.Adam(learning_rate=learning_rate)
     elif name == 'sgd':
@@ -64,6 +70,10 @@ def get_optimizer(name, learning_rate):
 
 
 def training():
+    """
+    This function is called by WandB to train the model.
+    :return: None
+    """
     tf.keras.backend.clear_session()
     with wandb.init() as run:
         config = run.config
@@ -74,7 +84,7 @@ def training():
 
         # Add custom layers
         x = keras.layers.GlobalAveragePooling2D()(base_model.output)
-        x = keras.layers.Dense(config.num_neurons, activation='relu')(x)
+        x = keras.layers.Dense(config.num_neurons, activation=config.activation)(x)
         output = keras.layers.Dense(len(class_names), activation='softmax')(x)
 
         model = keras.Model(inputs=base_model.input, outputs=output)

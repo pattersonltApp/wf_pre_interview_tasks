@@ -1,5 +1,5 @@
 # Author: Luke Patterson
-# Name: ECG Classification - Pre-Interview Tasks
+# Name: main.py - ECG Classification - Pre-Interview Tasks
 # Description: This file contains the code for pre-interview tasks involving ECG Classification.
 
 import pandas as pd
